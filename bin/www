@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('graduate:server');
+var http = require('http');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort("5000");
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+// var server = http.createServer(app);
+var server = http.Server(app);
+
+
+var io = require('socket.io')(server, {
+  serveClient: true,
+  wsEngine: "ws"
+});
+var server = server.listen(5000, function () {
+  console.log('服务端启动成功！端口5000');
+});
+var onlieCount = 0;
+var onlineList = { list: [] };
+let contactList = {}
+// var socketAll = {}
+// 新用户连接进来时
+io.on('connection', function (socket) {
+  onlieCount++;
+  console.log(socket.id + '进来了,' + '现在有' + onlieCount + '人在线！');
+
+  // var the_id = socket.id;
+  // // 把每一个用户的管道对象存到一个总对象里，key就是socket.id
+  // socketAll[the_id] = socket;
+
+  // 当有用户断开时
+  socket.on('disconnect', function () {
+    onlieCount--;
+    //用户下线时删除
+    for (let i = 0; i < onlineList.list.length; i++) {
+      // for (key in onlineList.list[i]) {
+      if (onlineList.list[i].socketid == socket.id) {
+        onlineList.list.splice(i, 1);
+      }
+      // }
+    }
+    // console.log(onlineList)
+    console.log(socket.id + '离开了,' + '现在有' + onlieCount + '人在线！');
+    //用户离开时再把用户列表广播道客户端
+    //将用户信息广播到所有客户端
+    io.emit("outline", onlineList);
+  });
+  //用户登陆时接受用户信息
+  socket.on("userinfo", (userinfo) => {
+    userinfo.socketid = socket.id
+    //将用户信息广播到所有客户端
+    onlineList.list.push(userinfo);
+    io.emit("online", onlineList);
+  });
+
+
+  //接受客户端信息   同时替换表情
+  socket.on("message", function (msg) {
+    var reg = /(\[([\u4e00-\u9fa5\w]+)\])+?/;//不用全局模式，
+    for (let i = 0; i < msg.classArr.length; i++) {
+      var c = msg.classArr[i]
+      msg.text = msg.text.replace(reg, "<span style='vertical-align: sub' class='face " + c + "'></span>", 1)
+    }
+    io.emit("msg", msg)
+
+
+  })
+
+  //留言板消息
+  socket.on("sendMsg", obj => {
+    this.contactList = obj
+    io.emit("resMsg", this.contactList)
+  })
+});
+
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort (val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError (error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening () {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
